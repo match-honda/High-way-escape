@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE - Jump Fix</title>
+  <title>HIGHWAY ESCAPE - Stable Jump & Game Over</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -82,6 +82,28 @@
       font-size: 17px;
       font-weight: 800;
       padding: 14px 22px;
+    }
+    .overlay-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .overlay-actions .start { margin-top: 0; }
+    .home-button {
+      border: 1px solid #64748b;
+      border-radius: 14px;
+      background: #1e293b;
+      color: white;
+      font-size: 17px;
+      font-weight: 800;
+      padding: 14px 22px;
+    }
+    .game-over-title {
+      color: #f87171;
+      font-size: 30px !important;
+      letter-spacing: .04em;
     }
     .countdown {
       position: absolute;
@@ -163,7 +185,10 @@
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
         <p id="overlayText">カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。</p>
-        <button id="startButton" class="start">3秒カウントダウンで開始</button>
+        <div class="overlay-actions">
+          <button id="startButton" class="start">3秒カウントダウンで開始</button>
+          <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
+        </div>
       </div>
     </div>
 
@@ -187,6 +212,7 @@
   const overlayTitle = document.getElementById('overlayTitle');
   const overlayText = document.getElementById('overlayText');
   const startButton = document.getElementById('startButton');
+  const homeButton = document.getElementById('homeButton');
   const countdown = document.getElementById('countdown');
   const warning = document.getElementById('warning');
   const timeValue = document.getElementById('timeValue');
@@ -222,7 +248,7 @@
   const player = {
     x:360, y:650, w:42, h:76, vx:0, speed:340,
     health:100, hitCooldown:0,
-    jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.35,
+    jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.55,
     airborne:false
   };
 
@@ -249,10 +275,23 @@
     Object.assign(player, {
       x:360, y:650, vx:0, speed:340, health:100,
       hitCooldown:0,
-      jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.35,
+      jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.55,
       airborne:false
     });
     updateHud();
+  }
+
+  function showTop() {
+    running = false;
+    releaseAllControls();
+    reset();
+    overlayTitle.textContent = 'HIGHWAY ESCAPE';
+    overlayTitle.classList.remove('game-over-title');
+    overlayText.textContent = 'カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。';
+    startButton.textContent = '3秒カウントダウンで開始';
+    homeButton.style.display = 'none';
+    overlay.classList.remove('hidden');
+    draw();
   }
 
   function updateHud() {
@@ -322,8 +361,11 @@
   });
 
   startButton.addEventListener('click', startCountdown);
+  homeButton.addEventListener('click', showTop);
 
   function startCountdown() {
+    overlayTitle.classList.remove('game-over-title');
+    homeButton.style.display = 'none';
     overlay.classList.add('hidden');
     countdown.classList.add('show');
     let n = 3;
@@ -345,14 +387,22 @@
   }
 
   function endGame(reason) {
+    if (!running) return;
     running = false;
+    releaseAllControls();
     warning.classList.remove('show');
     highScore = Math.max(highScore, elapsed);
     localStorage.setItem('highwayEscapeHighScore', highScore.toFixed(1));
-    overlayTitle.textContent = reason;
-    overlayText.textContent = `逃走時間 ${elapsed.toFixed(1)}秒　最高記録 ${highScore.toFixed(1)}秒`;
-    startButton.textContent = 'もう一度逃走する';
+
+    overlayTitle.textContent = 'GAME OVER';
+    overlayTitle.classList.add('game-over-title');
+    overlayText.innerHTML =
+      `${reason}<br><strong>逃走時間 ${elapsed.toFixed(1)}秒</strong><br>最高記録 ${highScore.toFixed(1)}秒`;
+
+    startButton.textContent = 'もう一度';
+    homeButton.style.display = 'inline-block';
     overlay.classList.remove('hidden');
+    draw();
   }
 
   function damage(amount) {
@@ -360,7 +410,7 @@
     player.health -= amount;
     player.hitCooldown = 0.7;
     shake = 12;
-    if (player.health <= 0) endGame('逮捕された！');
+    if (player.health <= 0) endGame('耐久力がなくなり、警察に捕まりました。');
   }
 
   function rectHit(a, b) {
@@ -390,6 +440,7 @@
       trainLength:1080,
       active:false,
       rampTriggered:false,
+      rampVisible:true,
       cleared:false
     };
     warning.classList.add('show');
@@ -408,7 +459,7 @@
 
     player.jumpTimer += dt;
     const progress = Math.min(1, player.jumpTimer / player.jumpDuration);
-    player.jumpHeight = Math.sin(progress * Math.PI) * 235;
+    player.jumpHeight = Math.sin(progress * Math.PI) * 360;
 
     if (progress >= 1) {
       player.jumpHeight = 0;
@@ -432,7 +483,11 @@
     if (!crossing.rampTriggered && rampInTriggerZone) {
       crossing.rampTriggered = true;
       const onRamp = Math.abs(player.x - rampCenter) < 165;
-      if (onRamp) startJump();
+      if (onRamp) {
+        crossing.rampVisible = false;
+        player.speed = Math.max(player.speed, 390);
+        startJump();
+      }
     }
 
     if (crossing.trackY > 170) crossing.active = true;
@@ -446,7 +501,7 @@
     const safelyAboveTrain = player.airborne && player.jumpHeight > 22;
 
     if (trainAtPlayerX && sameVerticalZone && !safelyAboveTrain) {
-      endGame('電車に衝突した！');
+      endGame('ジャンプに失敗し、電車に衝突しました。');
       return;
     }
 
@@ -703,7 +758,9 @@
     ctx.fillRect(0,y-34,canvas.width,7);
     ctx.fillRect(0,y+27,canvas.width,7);
 
-    drawRamp(crossing.rampY);
+    if (crossing.rampVisible) {
+      drawRamp(crossing.rampY);
+    }
 
     if (crossing.active) {
       const carWidth=230;
@@ -726,24 +783,57 @@
     enemies.forEach(enemy => drawCar(enemy.x,enemy.y,enemy.w,enemy.h,'#111827',true));
 
     const lift = player.jumpHeight;
-    const scale = 1 + Math.min(.32,lift/520);
+    const jumpProgress = player.airborne
+      ? Math.min(1, player.jumpTimer / player.jumpDuration)
+      : 0;
+    const visualLift = lift * 0.58;
+    const forwardLift = player.airborne ? Math.sin(jumpProgress * Math.PI) * 45 : 0;
+    const scale = 1 + Math.min(.52, lift / 620);
 
     if (player.airborne) {
-      ctx.fillStyle='rgba(0,0,0,.28)';
+      const shadowScale = Math.max(.38, 1 - lift / 500);
+      ctx.fillStyle='rgba(0,0,0,.32)';
       ctx.beginPath();
-      ctx.ellipse(player.x,player.y+42,35-Math.min(12,lift/30),13,0,Math.PI*2);
+      ctx.ellipse(
+        player.x,
+        player.y + 44,
+        38 * shadowScale,
+        14 * shadowScale,
+        0, 0, Math.PI*2
+      );
       ctx.fill();
+
+      // ジャンプ中も動いていることが分かる速度線
+      ctx.strokeStyle='rgba(255,255,255,.55)';
+      ctx.lineWidth=5;
+      for (let i=-2; i<=2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(player.x + i*28, player.y + 70);
+        ctx.lineTo(player.x + i*28, player.y + 120);
+        ctx.stroke();
+      }
     }
 
     if (player.hitCooldown <= 0 || Math.floor(player.hitCooldown*10)%2===0) {
-      drawCar(player.x,player.y-lift*.34,player.w,player.h,'#dc2626',false,scale);
+      drawCar(
+        player.x,
+        player.y - visualLift - forwardLift,
+        player.w,
+        player.h,
+        '#dc2626',
+        false,
+        scale
+      );
     }
 
     if (player.airborne) {
       ctx.fillStyle='white';
-      ctx.font='bold 18px sans-serif';
+      ctx.font='bold 25px sans-serif';
       ctx.textAlign='center';
-      ctx.fillText('JUMP!',player.x,player.y-lift*.34-65);
+      ctx.strokeStyle='rgba(0,0,0,.7)';
+      ctx.lineWidth=6;
+      ctx.strokeText('JUMP!',player.x,player.y-visualLift-forwardLift-78);
+      ctx.fillText('JUMP!',player.x,player.y-visualLift-forwardLift-78);
     }
 
     ctx.restore();
