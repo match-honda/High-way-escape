@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE - Continuous Train Jump Fix</title>
+  <title>HIGHWAY ESCAPE Ver.4</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -38,6 +38,8 @@
     }
     .hud-label { font-size: 11px; color: #cbd5e1; }
     .hud-value { margin-top: 3px; font-size: 18px; font-weight: 800; }
+    .hp-track { width:100%; height:7px; margin-top:5px; border-radius:999px; background:#334155; overflow:hidden; }
+    .hp-bar { width:100%; height:100%; border-radius:inherit; background:#22c55e; transition:width .2s ease, background-color .2s ease; }
     .game-wrap {
       position: relative;
       overflow: hidden;
@@ -175,7 +177,7 @@
     <div class="hud-card"><div class="hud-label">逃走時間</div><div id="timeValue" class="hud-value">0.0秒</div></div>
     <div class="hud-card"><div class="hud-label">速度</div><div id="speedValue" class="hud-value">340</div></div>
     <div class="hud-card"><div class="hud-label">手配度</div><div id="wantedValue" class="hud-value">★☆☆☆☆</div></div>
-    <div class="hud-card"><div class="hud-label">耐久力</div><div id="healthValue" class="hud-value">100</div></div>
+    <div class="hud-card"><div class="hud-label">耐久力</div><div id="healthValue" class="hud-value">180 / 180</div><div class="hp-track"><div id="hpBar" class="hp-bar"></div></div></div>
   </div>
 
   <div class="game-wrap">
@@ -184,7 +186,7 @@
     <div id="overlay" class="overlay">
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
-        <p id="overlayText">カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。<br><small>連続走行修正版 v3</small></p>
+        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。救急キットを取ると耐久力が20回復します。<br><small>Ver.4｜耐久180・回復アイテム追加</small></p>
         <div class="overlay-actions">
           <button id="startButton" class="start">3秒カウントダウンで開始</button>
           <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
@@ -219,6 +221,7 @@
   const speedValue = document.getElementById('speedValue');
   const wantedValue = document.getElementById('wantedValue');
   const healthValue = document.getElementById('healthValue');
+  const hpBar = document.getElementById('hpBar');
 
   const keys = { up:false, down:false, left:false, right:false };
   const controls = {
@@ -243,11 +246,17 @@
   let shake = 0;
   let enemies = [];
   let crossing = null;
+  let repairItems = [];
+  let repairSpawnTimer = 18 + Math.random() * 10;
+  let floatingTexts = [];
+  let particles = [];
+  let redFlash = 0;
   const roadWidth = 460;
+  const MAX_HEALTH = 180;
 
   const player = {
     x:360, y:650, w:42, h:76, vx:0, speed:340,
-    health:100, hitCooldown:0,
+    health:MAX_HEALTH, hitCooldown:0,
     jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.75,
     airborne:false
   };
@@ -270,10 +279,15 @@
     shake = 0;
     enemies = [];
     crossing = null;
+    repairItems = [];
+    repairSpawnTimer = 18 + Math.random() * 10;
+    floatingTexts = [];
+    particles = [];
+    redFlash = 0;
     warning.classList.remove('show');
 
     Object.assign(player, {
-      x:360, y:650, vx:0, speed:340, health:100,
+      x:360, y:650, vx:0, speed:340, health:MAX_HEALTH,
       hitCooldown:0,
       jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.75,
       airborne:false
@@ -287,7 +301,7 @@
     reset();
     overlayTitle.textContent = 'HIGHWAY ESCAPE';
     overlayTitle.classList.remove('game-over-title');
-    overlayText.textContent = 'カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。<br><small>連続走行修正版 v3</small>';
+    overlayText.textContent = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。救急キットを取ると耐久力が20回復します。<br><small>Ver.4｜耐久180・回復アイテム追加</small>';
     startButton.textContent = '3秒カウントダウンで開始';
     homeButton.style.display = 'none';
     overlay.classList.remove('hidden');
@@ -298,7 +312,11 @@
     timeValue.textContent = elapsed.toFixed(1) + '秒';
     speedValue.textContent = Math.round(player.speed);
     wantedValue.textContent = '★'.repeat(wanted) + '☆'.repeat(5 - wanted);
-    healthValue.textContent = Math.max(0, Math.ceil(player.health));
+    const currentHealth = Math.max(0, Math.ceil(player.health));
+    healthValue.textContent = `${currentHealth} / ${MAX_HEALTH}`;
+    const ratio = Math.max(0, Math.min(1, currentHealth / MAX_HEALTH));
+    hpBar.style.width = `${ratio * 100}%`;
+    hpBar.style.background = ratio > 0.6 ? '#22c55e' : ratio > 0.3 ? '#eab308' : '#ef4444';
   }
 
   function bindHold(el, key) {
@@ -409,8 +427,14 @@
     if (player.hitCooldown > 0 || player.airborne) return;
     player.health -= amount;
     player.hitCooldown = 0.7;
-    shake = 12;
-    if (player.health <= 0) endGame('耐久力がなくなり、警察に捕まりました。');
+    shake = 14;
+    redFlash = 0.32;
+    floatingTexts.push({x:player.x,y:player.y-70,text:`-${amount}`,life:1,maxLife:1});
+    for (let i=0;i<10;i++) particles.push({x:player.x+(Math.random()-.5)*35,y:player.y+(Math.random()-.5)*45,vx:(Math.random()-.5)*170,vy:-40-Math.random()*160,life:.45+Math.random()*.3,maxLife:.75,size:3+Math.random()*5});
+    if (player.health <= 0) {
+      player.health = 0;
+      endGame('耐久力がなくなり、警察に捕まりました。');
+    }
   }
 
   function rectHit(a, b) {
@@ -524,9 +548,7 @@
         player.jumpHeight > 35;
 
       if (!jumpingSafely) {
-        player.health = Math.max(1, player.health - 35);
-        player.hitCooldown = 0.9;
-        shake = 18;
+        damage(35);
       } else {
         crossing.cleared = true;
       }
@@ -545,6 +567,43 @@
     }
   }
 
+
+  function spawnRepairItem() {
+    const y = -80;
+    const center = roadCenterAt(y);
+    const laneOffsets = [-140,-70,0,70,140];
+    repairItems.push({x:center+laneOffsets[Math.floor(Math.random()*laneOffsets.length)],y,w:46,h:46,spin:0,collected:false});
+  }
+
+  function updateRepairItems(dt) {
+    repairSpawnTimer -= dt;
+    if (repairSpawnTimer <= 0) {
+      spawnRepairItem();
+      repairSpawnTimer = 24 + Math.random() * 16;
+    }
+    repairItems.forEach(item => {
+      item.y += player.speed * dt;
+      item.spin += dt * 4;
+      if (!item.collected && rectHit(player, item)) {
+        item.collected = true;
+        const before = player.health;
+        player.health = Math.min(MAX_HEALTH, player.health + 20);
+        const recovered = Math.ceil(player.health - before);
+        floatingTexts.push({x:player.x,y:player.y-85,text:recovered>0?`+${recovered}`:'MAX',life:1.2,maxLife:1.2});
+        for (let i=0;i<14;i++) particles.push({x:player.x+(Math.random()-.5)*35,y:player.y+(Math.random()-.5)*35,vx:(Math.random()-.5)*120,vy:-50-Math.random()*130,life:.6+Math.random()*.5,maxLife:1.1,size:4+Math.random()*5,heal:true});
+      }
+    });
+    repairItems = repairItems.filter(item => !item.collected && item.y < canvas.height + 100);
+  }
+
+  function updateEffects(dt) {
+    redFlash = Math.max(0, redFlash - dt);
+    floatingTexts.forEach(t => { t.y -= 45 * dt; t.life -= dt; });
+    floatingTexts = floatingTexts.filter(t => t.life > 0);
+    particles.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 260 * dt; p.life -= dt; });
+    particles = particles.filter(p => p.life > 0);
+  }
+
   function updateCurve(dt) {
     curveTimer -= dt;
     if (curveTimer <= 0) {
@@ -561,9 +620,10 @@
     wanted = Math.min(5, 1 + Math.floor(elapsed / 18));
     player.hitCooldown = Math.max(0, player.hitCooldown - dt);
 
-    const targetSpeed = keys.up ? 470 : keys.down ? 220 : 340;
-    player.speed += (targetSpeed - player.speed) * dt * 3.4;
-    player.speed = Math.max(210, Math.min(470, player.speed));
+    const targetSpeed = keys.up ? 535 : keys.down ? 165 : 340;
+    const response = keys.up ? 5.0 : keys.down ? 5.5 : 3.0;
+    player.speed += (targetSpeed - player.speed) * dt * response;
+    player.speed = Math.max(160, Math.min(535, player.speed));
 
     roadOffset = (roadOffset + player.speed * dt) % 110;
     updateCurve(dt);
@@ -590,6 +650,8 @@
     }
 
     updateJump(dt);
+    updateRepairItems(dt);
+    updateEffects(dt);
 
     trainTimer -= dt;
     if (trainTimer <= 0 && !crossing) startCrossing();
@@ -803,6 +865,36 @@
     }
   }
 
+
+  function drawRepairItem(item) {
+    ctx.save();
+    ctx.translate(item.x,item.y);
+    ctx.rotate(Math.sin(item.spin)*0.08);
+    ctx.fillStyle='rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(4,24,26,9,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f8fafc'; ctx.fillRect(-23,-23,46,46);
+    ctx.strokeStyle='#ef4444'; ctx.lineWidth=5; ctx.strokeRect(-23,-23,46,46);
+    ctx.fillStyle='#ef4444'; ctx.fillRect(-7,-17,14,34); ctx.fillRect(-17,-7,34,14);
+    ctx.restore();
+  }
+
+  function drawEffects() {
+    particles.forEach(p => {
+      ctx.globalAlpha = Math.max(0,p.life/p.maxLife);
+      ctx.fillStyle = p.heal ? '#86efac' : '#facc15';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha=1;
+    floatingTexts.forEach(t => {
+      ctx.globalAlpha=Math.max(0,t.life/t.maxLife);
+      ctx.fillStyle=t.text.startsWith('+')||t.text==='MAX'?'#86efac':'#f87171';
+      ctx.font='bold 30px sans-serif'; ctx.textAlign='center';
+      ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.lineWidth=6;
+      ctx.strokeText(t.text,t.x,t.y); ctx.fillText(t.text,t.x,t.y);
+    });
+    ctx.globalAlpha=1;
+  }
+
   function draw() {
     ctx.save();
 
@@ -812,6 +904,7 @@
 
     drawRoad();
     drawCrossing();
+    repairItems.forEach(drawRepairItem);
     enemies.forEach(enemy => drawCar(enemy.x,enemy.y,enemy.w,enemy.h,'#111827',true));
 
     const lift = player.jumpHeight;
@@ -871,6 +964,11 @@
       ctx.fillText('走行継続中', player.x, player.y-visualLift-forwardLift-52);
     }
 
+    drawEffects();
+    if (redFlash > 0) {
+      ctx.fillStyle = `rgba(239,68,68,${Math.min(.28,redFlash)})`;
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
     ctx.restore();
   }
 
