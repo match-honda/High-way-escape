@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE Ver.4</title>
+  <title>HIGHWAY ESCAPE Ver.4.1</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -186,7 +186,7 @@
     <div id="overlay" class="overlay">
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
-        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。救急キットを取ると耐久力が20回復します。<br><small>Ver.4｜耐久180・回復アイテム追加</small></p>
+        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.1｜耐久180・大回復キット+60</small></p>
         <div class="overlay-actions">
           <button id="startButton" class="start">3秒カウントダウンで開始</button>
           <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
@@ -247,7 +247,7 @@
   let enemies = [];
   let crossing = null;
   let repairItems = [];
-  let repairSpawnTimer = 18 + Math.random() * 10;
+  let repairSpawnTimer = 40 + Math.random() * 20;
   let floatingTexts = [];
   let particles = [];
   let redFlash = 0;
@@ -280,7 +280,7 @@
     enemies = [];
     crossing = null;
     repairItems = [];
-    repairSpawnTimer = 18 + Math.random() * 10;
+    repairSpawnTimer = 40 + Math.random() * 20;
     floatingTexts = [];
     particles = [];
     redFlash = 0;
@@ -301,7 +301,7 @@
     reset();
     overlayTitle.textContent = 'HIGHWAY ESCAPE';
     overlayTitle.classList.remove('game-over-title');
-    overlayText.textContent = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。救急キットを取ると耐久力が20回復します。<br><small>Ver.4｜耐久180・回復アイテム追加</small>';
+    overlayText.textContent = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.1｜耐久180・大回復キット+60</small>';
     startButton.textContent = '3秒カウントダウンで開始';
     homeButton.style.display = 'none';
     overlay.classList.remove('hidden');
@@ -579,7 +579,7 @@
     repairSpawnTimer -= dt;
     if (repairSpawnTimer <= 0) {
       spawnRepairItem();
-      repairSpawnTimer = 24 + Math.random() * 16;
+      repairSpawnTimer = 40 + Math.random() * 20;
     }
     repairItems.forEach(item => {
       item.y += player.speed * dt;
@@ -587,7 +587,7 @@
       if (!item.collected && rectHit(player, item)) {
         item.collected = true;
         const before = player.health;
-        player.health = Math.min(MAX_HEALTH, player.health + 20);
+        player.health = Math.min(MAX_HEALTH, player.health + 60);
         const recovered = Math.ceil(player.health - before);
         floatingTexts.push({x:player.x,y:player.y-85,text:recovered>0?`+${recovered}`:'MAX',life:1.2,maxLife:1.2});
         for (let i=0;i<14;i++) particles.push({x:player.x+(Math.random()-.5)*35,y:player.y+(Math.random()-.5)*35,vx:(Math.random()-.5)*120,vy:-50-Math.random()*130,life:.6+Math.random()*.5,maxLife:1.1,size:4+Math.random()*5,heal:true});
