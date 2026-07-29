@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE</title>
+  <title>HIGHWAY ESCAPE - Jump Fix</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -221,7 +221,9 @@
 
   const player = {
     x:360, y:650, w:42, h:76, vx:0, speed:340,
-    health:100, hitCooldown:0, jumpHeight:0, jumpVelocity:0, airborne:false
+    health:100, hitCooldown:0,
+    jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.35,
+    airborne:false
   };
 
   function roadCenterAt(y) {
@@ -246,7 +248,9 @@
 
     Object.assign(player, {
       x:360, y:650, vx:0, speed:340, health:100,
-      hitCooldown:0, jumpHeight:0, jumpVelocity:0, airborne:false
+      hitCooldown:0,
+      jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.35,
+      airborne:false
     });
     updateHud();
   }
@@ -277,6 +281,16 @@
   }
 
   Object.entries(controls).forEach(([key, el]) => bindHold(el, key));
+
+  function releaseAllControls() {
+    Object.keys(keys).forEach(key => keys[key] = false);
+    Object.values(controls).forEach(el => el.classList.remove('active'));
+  }
+
+  addEventListener('blur', releaseAllControls);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) releaseAllControls();
+  });
 
   addEventListener('keydown', e => {
     const map = {
@@ -374,7 +388,9 @@
       direction:-1,
       trainSpeed:410 + wanted * 20,
       trainLength:1080,
-      active:false
+      active:false,
+      rampTriggered:false,
+      cleared:false
     };
     warning.classList.add('show');
   }
@@ -382,17 +398,21 @@
   function startJump() {
     if (player.airborne) return;
     player.airborne = true;
-    player.jumpVelocity = 690;
+    player.jumpTimer = 0;
     player.jumpHeight = 1;
+    player.jumpVelocity = 0;
   }
 
   function updateJump(dt) {
     if (!player.airborne) return;
-    player.jumpHeight += player.jumpVelocity * dt;
-    player.jumpVelocity -= 980 * dt;
-    if (player.jumpHeight <= 0) {
+
+    player.jumpTimer += dt;
+    const progress = Math.min(1, player.jumpTimer / player.jumpDuration);
+    player.jumpHeight = Math.sin(progress * Math.PI) * 235;
+
+    if (progress >= 1) {
       player.jumpHeight = 0;
-      player.jumpVelocity = 0;
+      player.jumpTimer = 0;
       player.airborne = false;
     }
   }
@@ -405,8 +425,14 @@
 
     const rampCenter = roadCenterAt(crossing.rampY);
 
-    if (crossing.rampY > player.y - 50 && crossing.rampY < player.y + 75) {
-      if (Math.abs(player.x - rampCenter) < 150) startJump();
+    const rampInTriggerZone =
+      crossing.rampY >= player.y - 85 &&
+      crossing.rampY <= player.y + 105;
+
+    if (!crossing.rampTriggered && rampInTriggerZone) {
+      crossing.rampTriggered = true;
+      const onRamp = Math.abs(player.x - rampCenter) < 165;
+      if (onRamp) startJump();
     }
 
     if (crossing.trackY > 170) crossing.active = true;
@@ -416,11 +442,16 @@
     const trainRight = crossing.trainX + crossing.trainLength / 2;
     const trainAtPlayerX = player.x + player.w / 2 > trainLeft &&
                            player.x - player.w / 2 < trainRight;
-    const sameVerticalZone = Math.abs(crossing.trackY - player.y) < 50;
+    const sameVerticalZone = Math.abs(crossing.trackY - player.y) < 55;
+    const safelyAboveTrain = player.airborne && player.jumpHeight > 22;
 
-    if (trainAtPlayerX && sameVerticalZone && !player.airborne) {
+    if (trainAtPlayerX && sameVerticalZone && !safelyAboveTrain) {
       endGame('電車に衝突した！');
       return;
+    }
+
+    if (player.airborne && crossing.trackY > player.y + 65) {
+      crossing.cleared = true;
     }
 
     if (crossing.trackY > canvas.height + 180) {
