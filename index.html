@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE Ver.4.1</title>
+  <title>HIGHWAY ESCAPE Ver.4.2</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -186,7 +186,7 @@
     <div id="overlay" class="overlay">
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
-        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.1｜耐久180・大回復キット+60</small></p>
+        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.2｜ジャンプ台サイズ調整</small></p>
         <div class="overlay-actions">
           <button id="startButton" class="start">3秒カウントダウンで開始</button>
           <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
@@ -301,7 +301,7 @@
     reset();
     overlayTitle.textContent = 'HIGHWAY ESCAPE';
     overlayTitle.classList.remove('game-over-title');
-    overlayText.textContent = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.1｜耐久180・大回復キット+60</small>';
+    overlayText.innerHTML = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.2｜ジャンプ台サイズ調整</small>';
     startButton.textContent = '3秒カウントダウンで開始';
     homeButton.style.display = 'none';
     overlay.classList.remove('hidden');
@@ -766,10 +766,10 @@
 
   function drawRamp(rampY) {
     const centerX = roadCenterAt(rampY);
-    const nearY = rampY + 92;
-    const farY = rampY - 74;
-    const nearHalf = 142;
-    const farHalf = 82;
+    const nearY = rampY + 75;
+    const farY = rampY - 61;
+    const nearHalf = 116;
+    const farHalf = 67;
 
     ctx.fillStyle = '#facc15';
     ctx.beginPath();
@@ -781,9 +781,9 @@
     ctx.fill();
 
     ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 9;
+    ctx.lineWidth = 7;
     for (let i=-2; i<=2; i++) {
-      const y = rampY + i*28;
+      const y = rampY + i*23;
       const ratio = (nearY-y)/(nearY-farY);
       const half = nearHalf-(nearHalf-farHalf)*ratio;
       ctx.beginPath();
@@ -794,11 +794,11 @@
 
     // 進行方向（画面上＝線路側）を明示。
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 42px sans-serif';
+    ctx.font = 'bold 35px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('↑', centerX, rampY + 10);
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText('TRAIN JUMP', centerX, rampY + 55);
+    ctx.fillText('↑', centerX, rampY + 7);
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('TRAIN JUMP', centerX, rampY + 45);
   }
 
   function drawTrainCar(x, y, isFront) {
