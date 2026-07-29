@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE - Stable Jump & Game Over</title>
+  <title>HIGHWAY ESCAPE - Continuous Train Jump Fix</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -184,7 +184,7 @@
     <div id="overlay" class="overlay">
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
-        <p id="overlayText">カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。</p>
+        <p id="overlayText">カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。<br><small>連続走行修正版 v3</small></p>
         <div class="overlay-actions">
           <button id="startButton" class="start">3秒カウントダウンで開始</button>
           <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
@@ -248,7 +248,7 @@
   const player = {
     x:360, y:650, w:42, h:76, vx:0, speed:340,
     health:100, hitCooldown:0,
-    jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.55,
+    jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.75,
     airborne:false
   };
 
@@ -275,7 +275,7 @@
     Object.assign(player, {
       x:360, y:650, vx:0, speed:340, health:100,
       hitCooldown:0,
-      jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.55,
+      jumpHeight:0, jumpVelocity:0, jumpTimer:0, jumpDuration:1.75,
       airborne:false
     });
     updateHud();
@@ -287,7 +287,7 @@
     reset();
     overlayTitle.textContent = 'HIGHWAY ESCAPE';
     overlayTitle.classList.remove('game-over-title');
-    overlayText.textContent = 'カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。';
+    overlayText.textContent = 'カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。<br><small>連続走行修正版 v3</small>';
     startButton.textContent = '3秒カウントダウンで開始';
     homeButton.style.display = 'none';
     overlay.classList.remove('hidden');
@@ -432,8 +432,10 @@
 
   function startCrossing() {
     crossing = {
-      trackY:-300,
-      rampY:-120,
+      // 上へ進むプレーヤーに対し、画面下側のジャンプ台を先に通過し、
+      // その後で線路・電車へ到達する配置。
+      trackY:-360,
+      rampY:-80,
       trainX:canvas.width + 620,
       direction:-1,
       trainSpeed:410 + wanted * 20,
@@ -441,7 +443,8 @@
       active:false,
       rampTriggered:false,
       rampVisible:true,
-      cleared:false
+      cleared:false,
+      collisionHandled:false
     };
     warning.classList.add('show');
   }
@@ -459,7 +462,7 @@
 
     player.jumpTimer += dt;
     const progress = Math.min(1, player.jumpTimer / player.jumpDuration);
-    player.jumpHeight = Math.sin(progress * Math.PI) * 360;
+    player.jumpHeight = Math.sin(progress * Math.PI) * 390;
 
     if (progress >= 1) {
       player.jumpHeight = 0;
@@ -471,48 +474,74 @@
   function updateCrossing(dt) {
     if (!crossing) return;
 
-    crossing.trackY += player.speed * dt;
-    crossing.rampY += player.speed * dt;
+    // イベント中も通常の速度で必ず下方向へ流し続ける。
+    const worldSpeed = Math.max(260, player.speed);
+    crossing.trackY += worldSpeed * dt;
+    crossing.rampY += worldSpeed * dt;
 
     const rampCenter = roadCenterAt(crossing.rampY);
 
-    const rampInTriggerZone =
-      crossing.rampY >= player.y - 85 &&
-      crossing.rampY <= player.y + 105;
+    // ジャンプ台がプレーヤー位置を通過した瞬間に必ず自動ジャンプ。
+    // 横位置で失敗しないよう、ジャンプ台全体を有効判定にする。
+    const reachedRamp =
+      crossing.rampY >= player.y - 95 &&
+      crossing.rampY <= player.y + 120;
 
-    if (!crossing.rampTriggered && rampInTriggerZone) {
+    if (!crossing.rampTriggered && reachedRamp) {
       crossing.rampTriggered = true;
-      const onRamp = Math.abs(player.x - rampCenter) < 165;
-      if (onRamp) {
-        crossing.rampVisible = false;
-        player.speed = Math.max(player.speed, 390);
-        startJump();
-      }
+      crossing.rampVisible = false;
+
+      // プレーヤーをジャンプ台中央へ少し寄せ、確実に進行方向へ飛ばす。
+      player.x += (rampCenter - player.x) * 0.35;
+      player.speed = Math.max(player.speed, 410);
+      startJump();
     }
 
-    if (crossing.trackY > 170) crossing.active = true;
-    if (crossing.active) crossing.trainX += crossing.direction * crossing.trainSpeed * dt;
+    // 電車は線路が画面内へ入ったら右から左へ走る。
+    if (crossing.trackY > 100) crossing.active = true;
+    if (crossing.active) {
+      crossing.trainX += crossing.direction * crossing.trainSpeed * dt;
+    }
 
     const trainLeft = crossing.trainX - crossing.trainLength / 2;
     const trainRight = crossing.trainX + crossing.trainLength / 2;
-    const trainAtPlayerX = player.x + player.w / 2 > trainLeft &&
-                           player.x - player.w / 2 < trainRight;
-    const sameVerticalZone = Math.abs(crossing.trackY - player.y) < 55;
-    const safelyAboveTrain = player.airborne && player.jumpHeight > 22;
+    const trainAtPlayerX =
+      player.x + player.w / 2 > trainLeft &&
+      player.x - player.w / 2 < trainRight;
+    const sameVerticalZone = Math.abs(crossing.trackY - player.y) < 58;
 
-    if (trainAtPlayerX && sameVerticalZone && !safelyAboveTrain) {
-      endGame('ジャンプに失敗し、電車に衝突しました。');
-      return;
+    // 電車イベントでは絶対にゲームループを停止しない。
+    // ジャンプ失敗時は1回だけダメージを与え、電車を通過させて続行する。
+    if (
+      trainAtPlayerX &&
+      sameVerticalZone &&
+      !crossing.collisionHandled
+    ) {
+      crossing.collisionHandled = true;
+
+      const jumpingSafely =
+        player.airborne &&
+        player.jumpHeight > 35;
+
+      if (!jumpingSafely) {
+        player.health = Math.max(1, player.health - 35);
+        player.hitCooldown = 0.9;
+        shake = 18;
+      } else {
+        crossing.cleared = true;
+      }
     }
 
-    if (player.airborne && crossing.trackY > player.y + 65) {
+    // 線路を越えたら成功扱い。ジャンプが終わってもゲームは継続。
+    if (crossing.trackY > player.y + 90) {
       crossing.cleared = true;
     }
 
-    if (crossing.trackY > canvas.height + 180) {
+    // イベントを画面下へ流し切って通常走行へ戻す。
+    if (crossing.trackY > canvas.height + 190) {
       warning.classList.remove('show');
       crossing = null;
-      trainTimer = 11 + Math.random() * 8;
+      trainTimer = 12 + Math.random() * 8;
     }
   }
 
@@ -568,9 +597,9 @@
     if (!running) return;
 
     spawnTimer -= dt;
-    if (spawnTimer <= 0 && !crossing) {
-      spawnPolice();
-      spawnTimer = Math.max(0.9, 2.5 - wanted * 0.22);
+    if (spawnTimer <= 0) {
+      if (!player.airborne) spawnPolice();
+      spawnTimer = Math.max(1.0, 2.5 - wanted * 0.22);
     }
 
     enemies.forEach(enemy => {
@@ -675,10 +704,10 @@
 
   function drawRamp(rampY) {
     const centerX = roadCenterAt(rampY);
-    const nearY = rampY + 82;
-    const farY = rampY - 62;
-    const nearHalf = 165;
-    const farHalf = 105;
+    const nearY = rampY + 92;
+    const farY = rampY - 74;
+    const nearHalf = 142;
+    const farHalf = 82;
 
     ctx.fillStyle = '#facc15';
     ctx.beginPath();
@@ -692,19 +721,22 @@
     ctx.strokeStyle = '#111827';
     ctx.lineWidth = 9;
     for (let i=-2; i<=2; i++) {
-      const y = rampY + i*27;
+      const y = rampY + i*28;
       const ratio = (nearY-y)/(nearY-farY);
       const half = nearHalf-(nearHalf-farHalf)*ratio;
       ctx.beginPath();
-      ctx.moveTo(centerX-half, y+12);
-      ctx.lineTo(centerX+half, y-12);
+      ctx.moveTo(centerX-half, y+10);
+      ctx.lineTo(centerX+half, y-10);
       ctx.stroke();
     }
 
+    // 進行方向（画面上＝線路側）を明示。
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 38px sans-serif';
+    ctx.font = 'bold 42px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('↑', centerX, rampY+8);
+    ctx.fillText('↑', centerX, rampY + 10);
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('TRAIN JUMP', centerX, rampY + 55);
   }
 
   function drawTrainCar(x, y, isFront) {
@@ -820,7 +852,7 @@
         player.y - visualLift - forwardLift,
         player.w,
         player.h,
-        '#dc2626',
+        '#ef4444',
         false,
         scale
       );
@@ -834,6 +866,9 @@
       ctx.lineWidth=6;
       ctx.strokeText('JUMP!',player.x,player.y-visualLift-forwardLift-78);
       ctx.fillText('JUMP!',player.x,player.y-visualLift-forwardLift-78);
+
+      ctx.font='bold 16px sans-serif';
+      ctx.fillText('走行継続中', player.x, player.y-visualLift-forwardLift-52);
     }
 
     ctx.restore();
