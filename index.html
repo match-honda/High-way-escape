@@ -2,9 +2,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#111827">
-  <title>HIGHWAY ESCAPE Ver.4.2</title>
+  <title>HIGHWAY ESCAPE Ver.4.3</title>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -14,6 +14,12 @@
       color: white;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overscroll-behavior: none;
+      touch-action: none;
+      -ms-touch-action: none;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      -webkit-user-select: none;
+      user-select: none;
     }
     body {
       display: flex;
@@ -22,6 +28,8 @@
     }
     .app {
       width: min(100%, 760px);
+      touch-action: none;
+      -ms-touch-action: none;
     }
     .hud {
       display: grid;
@@ -75,6 +83,13 @@
     }
     .panel h1 { margin: 0; font-size: 24px; }
     .panel p { margin: 12px 0 0; color: #cbd5e1; line-height: 1.6; font-size: 14px; }
+    button {
+      touch-action: none;
+      -ms-touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
     .start {
       margin-top: 18px;
       border: 0;
@@ -186,7 +201,7 @@
     <div id="overlay" class="overlay">
       <div class="panel">
         <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
-        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.2｜ジャンプ台サイズ調整</small></p>
+        <p id="overlayText">カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.3｜画面ズーム防止</small></p>
         <div class="overlay-actions">
           <button id="startButton" class="start">3秒カウントダウンで開始</button>
           <button id="homeButton" class="home-button" style="display:none;">トップへ戻る</button>
@@ -208,6 +223,26 @@
 
 <script>
 (() => {
+
+  // スマホブラウザのピンチ・ダブルタップ拡大を防止
+  const preventZoom = (event) => event.preventDefault();
+
+  document.addEventListener('gesturestart', preventZoom, { passive:false });
+  document.addEventListener('gesturechange', preventZoom, { passive:false });
+  document.addEventListener('gestureend', preventZoom, { passive:false });
+  document.addEventListener('dblclick', preventZoom, { passive:false });
+
+  document.addEventListener('touchmove', (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive:false });
+
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (event) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 350) event.preventDefault();
+    lastTouchEnd = now;
+  }, { passive:false });
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const overlay = document.getElementById('overlay');
@@ -301,7 +336,7 @@
     reset();
     overlayTitle.textContent = 'HIGHWAY ESCAPE';
     overlayTitle.classList.remove('game-over-title');
-    overlayText.innerHTML = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.2｜ジャンプ台サイズ調整</small>';
+    overlayText.innerHTML = 'カーブする道路を走り、ジャンプ台で電車を飛び越えてください。大回復キットを取ると耐久力が60回復します。<br><small>Ver.4.3｜画面ズーム防止</small>';
     startButton.textContent = '3秒カウントダウンで開始';
     homeButton.style.display = 'none';
     overlay.classList.remove('hidden');
