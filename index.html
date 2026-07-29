@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <title>HIGHWAY ESCAPE</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #0f172a;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overscroll-behavior: none;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+    }
+    .app {
+      width: min(100%, 760px);
+    }
+    .hud {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .hud-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 8px 4px;
+      text-align: center;
+    }
+    .hud-label { font-size: 11px; color: #cbd5e1; }
+    .hud-value { margin-top: 3px; font-size: 18px; font-weight: 800; }
+    .game-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid #334155;
+      background: black;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      touch-action: none;
+      background: #171717;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      background: rgba(0,0,0,.68);
+      z-index: 5;
+    }
+    .overlay.hidden { display: none; }
+    .panel {
+      width: min(100%, 430px);
+      padding: 22px;
+      border: 1px solid #475569;
+      border-radius: 18px;
+      background: rgba(15,23,42,.96);
+      text-align: center;
+    }
+    .panel h1 { margin: 0; font-size: 24px; }
+    .panel p { margin: 12px 0 0; color: #cbd5e1; line-height: 1.6; font-size: 14px; }
+    .start {
+      margin-top: 18px;
+      border: 0;
+      border-radius: 14px;
+      background: #2563eb;
+      color: white;
+      font-size: 17px;
+      font-weight: 800;
+      padding: 14px 22px;
+    }
+    .countdown {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 84px;
+      font-weight: 900;
+      text-shadow: 0 4px 14px black;
+      pointer-events: none;
+    }
+    .countdown.show { display: flex; }
+    .warning {
+      position: absolute;
+      left: 50%;
+      top: 70px;
+      transform: translateX(-50%);
+      z-index: 4;
+      display: none;
+      width: max-content;
+      max-width: 90%;
+      border-radius: 12px;
+      background: rgba(220,38,38,.95);
+      color: white;
+      padding: 10px 16px;
+      font-weight: 800;
+      text-align: center;
+      pointer-events: none;
+    }
+    .warning.show { display: block; }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .control {
+      min-width: 0;
+      padding: 18px 4px;
+      border: 1px solid #475569;
+      border-radius: 14px;
+      background: #1e293b;
+      color: white;
+      font-size: clamp(13px, 3.8vw, 18px);
+      font-weight: 800;
+      touch-action: none;
+      user-select: none;
+    }
+    .control.active {
+      background: #2563eb;
+      transform: scale(.97);
+    }
+    @media (max-width: 430px) {
+      body { padding: 4px; }
+      .hud { gap: 3px; }
+      .hud-card { padding: 6px 2px; border-radius: 9px; }
+      .hud-label { font-size: 9px; }
+      .hud-value { font-size: 14px; }
+      .controls { gap: 4px; }
+      .control { padding: 16px 1px; border-radius: 11px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="hud">
+    <div class="hud-card"><div class="hud-label">逃走時間</div><div id="timeValue" class="hud-value">0.0秒</div></div>
+    <div class="hud-card"><div class="hud-label">速度</div><div id="speedValue" class="hud-value">340</div></div>
+    <div class="hud-card"><div class="hud-label">手配度</div><div id="wantedValue" class="hud-value">★☆☆☆☆</div></div>
+    <div class="hud-card"><div class="hud-label">耐久力</div><div id="healthValue" class="hud-value">100</div></div>
+  </div>
+
+  <div class="game-wrap">
+    <canvas id="game" width="720" height="920"></canvas>
+
+    <div id="overlay" class="overlay">
+      <div class="panel">
+        <h1 id="overlayTitle">HIGHWAY ESCAPE</h1>
+        <p id="overlayText">カーブする道路を走り、線路の手前にあるジャンプ台で電車を飛び越えてください。</p>
+        <button id="startButton" class="start">3秒カウントダウンで開始</button>
+      </div>
+    </div>
+
+    <div id="countdown" class="countdown"></div>
+    <div id="warning" class="warning">踏切接近！手前のジャンプ台に乗れ！</div>
+  </div>
+
+  <div class="controls">
+    <button id="left" class="control">◀ 左</button>
+    <button id="down" class="control">減速</button>
+    <button id="up" class="control">加速</button>
+    <button id="right" class="control">右 ▶</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayText = document.getElementById('overlayText');
+  const startButton = document.getElementById('startButton');
+  const countdown = document.getElementById('countdown');
+  const warning = document.getElementById('warning');
+  const timeValue = document.getElementById('timeValue');
+  const speedValue = document.getElementById('speedValue');
+  const wantedValue = document.getElementById('wantedValue');
+  const healthValue = document.getElementById('healthValue');
+
+  const keys = { up:false, down:false, left:false, right:false };
+  const controls = {
+    up:document.getElementById('up'),
+    down:document.getElementById('down'),
+    left:document.getElementById('left'),
+    right:document.getElementById('right')
+  };
+
+  let running = false;
+  let last = 0;
+  let elapsed = 0;
+  let highScore = Number(localStorage.getItem('highwayEscapeHighScore') || 0);
+  let roadOffset = 0;
+  let curvePhase = 0;
+  let curveStrength = 0;
+  let targetCurveStrength = 0;
+  let curveTimer = 4;
+  let wanted = 1;
+  let spawnTimer = 0;
+  let trainTimer = 0;
+  let shake = 0;
+  let enemies = [];
+  let crossing = null;
+  const roadWidth = 460;
+
+  const player = {
+    x:360, y:650, w:42, h:76, vx:0, speed:340,
+    health:100, hitCooldown:0, jumpHeight:0, jumpVelocity:0, airborne:false
+  };
+
+  function roadCenterAt(y) {
+    const depth = 1 - y / canvas.height;
+    return canvas.width / 2 + Math.sin(curvePhase + depth * 2.8) * curveStrength * depth;
+  }
+
+  function reset() {
+    elapsed = 0;
+    roadOffset = 0;
+    curvePhase = 0;
+    curveStrength = 0;
+    targetCurveStrength = 0;
+    curveTimer = 4;
+    wanted = 1;
+    spawnTimer = 1.5;
+    trainTimer = 10 + Math.random() * 5;
+    shake = 0;
+    enemies = [];
+    crossing = null;
+    warning.classList.remove('show');
+
+    Object.assign(player, {
+      x:360, y:650, vx:0, speed:340, health:100,
+      hitCooldown:0, jumpHeight:0, jumpVelocity:0, airborne:false
+    });
+    updateHud();
+  }
+
+  function updateHud() {
+    timeValue.textContent = elapsed.toFixed(1) + '秒';
+    speedValue.textContent = Math.round(player.speed);
+    wantedValue.textContent = '★'.repeat(wanted) + '☆'.repeat(5 - wanted);
+    healthValue.textContent = Math.max(0, Math.ceil(player.health));
+  }
+
+  function bindHold(el, key) {
+    const on = e => {
+      e.preventDefault();
+      keys[key] = true;
+      el.classList.add('active');
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    };
+    const off = e => {
+      e.preventDefault();
+      keys[key] = false;
+      el.classList.remove('active');
+    };
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('lostpointercapture', off);
+  }
+
+  Object.entries(controls).forEach(([key, el]) => bindHold(el, key));
+
+  addEventListener('keydown', e => {
+    const map = {
+      ArrowUp:'up', w:'up', W:'up',
+      ArrowDown:'down', s:'down', S:'down',
+      ArrowLeft:'left', a:'left', A:'left',
+      ArrowRight:'right', d:'right', D:'right'
+    };
+    const key = map[e.key];
+    if (key) {
+      e.preventDefault();
+      keys[key] = true;
+      controls[key].classList.add('active');
+    }
+  });
+
+  addEventListener('keyup', e => {
+    const map = {
+      ArrowUp:'up', w:'up', W:'up',
+      ArrowDown:'down', s:'down', S:'down',
+      ArrowLeft:'left', a:'left', A:'left',
+      ArrowRight:'right', d:'right', D:'right'
+    };
+    const key = map[e.key];
+    if (key) {
+      keys[key] = false;
+      controls[key].classList.remove('active');
+    }
+  });
+
+  startButton.addEventListener('click', startCountdown);
+
+  function startCountdown() {
+    overlay.classList.add('hidden');
+    countdown.classList.add('show');
+    let n = 3;
+    countdown.textContent = n;
+
+    const timer = setInterval(() => {
+      n--;
+      if (n > 0) countdown.textContent = n;
+      else if (n === 0) countdown.textContent = 'GO!';
+      else {
+        clearInterval(timer);
+        countdown.classList.remove('show');
+        reset();
+        running = true;
+        last = performance.now();
+        requestAnimationFrame(loop);
+      }
+    }, 700);
+  }
+
+  function endGame(reason) {
+    running = false;
+    warning.classList.remove('show');
+    highScore = Math.max(highScore, elapsed);
+    localStorage.setItem('highwayEscapeHighScore', highScore.toFixed(1));
+    overlayTitle.textContent = reason;
+    overlayText.textContent = `逃走時間 ${elapsed.toFixed(1)}秒　最高記録 ${highScore.toFixed(1)}秒`;
+    startButton.textContent = 'もう一度逃走する';
+    overlay.classList.remove('hidden');
+  }
+
+  function damage(amount) {
+    if (player.hitCooldown > 0 || player.airborne) return;
+    player.health -= amount;
+    player.hitCooldown = 0.7;
+    shake = 12;
+    if (player.health <= 0) endGame('逮捕された！');
+  }
+
+  function rectHit(a, b) {
+    return Math.abs(a.x - b.x) < (a.w + b.w) / 2 &&
+           Math.abs(a.y - b.y) < (a.h + b.h) / 2;
+  }
+
+  function spawnPolice() {
+    const center = roadCenterAt(canvas.height + 80);
+    const laneOffsets = [-160, -80, 0, 80, 160];
+    enemies.push({
+      x:center + laneOffsets[Math.floor(Math.random() * laneOffsets.length)],
+      y:canvas.height + 110,
+      w:44, h:78, vx:0,
+      speed:player.speed + 45 + wanted * 16 + Math.random() * 45,
+      ramCooldown:0
+    });
+  }
+
+  function startCrossing() {
+    crossing = {
+      trackY:-300,
+      rampY:-120,
+      trainX:canvas.width + 620,
+      direction:-1,
+      trainSpeed:410 + wanted * 20,
+      trainLength:1080,
+      active:false
+    };
+    warning.classList.add('show');
+  }
+
+  function startJump() {
+    if (player.airborne) return;
+    player.airborne = true;
+    player.jumpVelocity = 690;
+    player.jumpHeight = 1;
+  }
+
+  function updateJump(dt) {
+    if (!player.airborne) return;
+    player.jumpHeight += player.jumpVelocity * dt;
+    player.jumpVelocity -= 980 * dt;
+    if (player.jumpHeight <= 0) {
+      player.jumpHeight = 0;
+      player.jumpVelocity = 0;
+      player.airborne = false;
+    }
+  }
+
+  function updateCrossing(dt) {
+    if (!crossing) return;
+
+    crossing.trackY += player.speed * dt;
+    crossing.rampY += player.speed * dt;
+
+    const rampCenter = roadCenterAt(crossing.rampY);
+
+    if (crossing.rampY > player.y - 50 && crossing.rampY < player.y + 75) {
+      if (Math.abs(player.x - rampCenter) < 150) startJump();
+    }
+
+    if (crossing.trackY > 170) crossing.active = true;
+    if (crossing.active) crossing.trainX += crossing.direction * crossing.trainSpeed * dt;
+
+    const trainLeft = crossing.trainX - crossing.trainLength / 2;
+    const trainRight = crossing.trainX + crossing.trainLength / 2;
+    const trainAtPlayerX = player.x + player.w / 2 > trainLeft &&
+                           player.x - player.w / 2 < trainRight;
+    const sameVerticalZone = Math.abs(crossing.trackY - player.y) < 50;
+
+    if (trainAtPlayerX && sameVerticalZone && !player.airborne) {
+      endGame('電車に衝突した！');
+      return;
+    }
+
+    if (crossing.trackY > canvas.height + 180) {
+      warning.classList.remove('show');
+      crossing = null;
+      trainTimer = 11 + Math.random() * 8;
+    }
+  }
+
+  function updateCurve(dt) {
+    curveTimer -= dt;
+    if (curveTimer <= 0) {
+      const choices = [-150, -110, -70, 0, 70, 110, 150];
+      targetCurveStrength = choices[Math.floor(Math.random() * choices.length)];
+      curveTimer = 4 + Math.random() * 4;
+    }
+    curveStrength += (targetCurveStrength - curveStrength) * dt * 0.55;
+    curvePhase += player.speed * dt * 0.0009;
+  }
+
+  function update(dt) {
+    elapsed += dt;
+    wanted = Math.min(5, 1 + Math.floor(elapsed / 18));
+    player.hitCooldown = Math.max(0, player.hitCooldown - dt);
+
+    const targetSpeed = keys.up ? 470 : keys.down ? 220 : 340;
+    player.speed += (targetSpeed - player.speed) * dt * 3.4;
+    player.speed = Math.max(210, Math.min(470, player.speed));
+
+    roadOffset = (roadOffset + player.speed * dt) % 110;
+    updateCurve(dt);
+
+    const horizontalInput = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    player.vx += horizontalInput * 760 * dt;
+    player.vx *= Math.pow(horizontalInput === 0 ? 0.006 : 0.18, dt);
+    player.vx = Math.max(-350, Math.min(350, player.vx));
+    player.x += player.vx * dt;
+
+    const center = roadCenterAt(player.y);
+    const roadLeft = center - roadWidth / 2;
+    const roadRight = center + roadWidth / 2;
+
+    if (player.x < roadLeft + player.w / 2) {
+      player.x = roadLeft + player.w / 2;
+      player.vx = 0;
+      damage(10);
+    }
+    if (player.x > roadRight - player.w / 2) {
+      player.x = roadRight - player.w / 2;
+      player.vx = 0;
+      damage(10);
+    }
+
+    updateJump(dt);
+
+    trainTimer -= dt;
+    if (trainTimer <= 0 && !crossing) startCrossing();
+    updateCrossing(dt);
+    if (!running) return;
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0 && !crossing) {
+      spawnPolice();
+      spawnTimer = Math.max(0.9, 2.5 - wanted * 0.22);
+    }
+
+    enemies.forEach(enemy => {
+      enemy.ramCooldown = Math.max(0, enemy.ramCooldown - dt);
+      const dx = player.x - enemy.x;
+      enemy.vx += Math.sign(dx) * (85 + wanted * 18) * dt;
+      enemy.vx = Math.max(-125, Math.min(125, enemy.vx));
+      enemy.x += enemy.vx * dt;
+      enemy.y -= (enemy.speed - player.speed) * dt;
+
+      const enemyCenter = roadCenterAt(enemy.y);
+      enemy.x = Math.max(
+        enemyCenter - roadWidth / 2 + enemy.w / 2,
+        Math.min(enemyCenter + roadWidth / 2 - enemy.w / 2, enemy.x)
+      );
+
+      if (rectHit(player, enemy) && enemy.ramCooldown <= 0 && !player.airborne) {
+        damage(20);
+        enemy.ramCooldown = 1;
+        enemy.y += 85;
+        enemy.vx *= -0.6;
+      }
+    });
+
+    enemies = enemies.filter(enemy => enemy.y > -140 && enemy.y < canvas.height + 220);
+    shake *= Math.pow(0.02, dt);
+    updateHud();
+  }
+
+  function drawCar(x, y, w, h, body, police=false, scale=1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.fillRect(-w/2+4, -h/2+7, w, h);
+    ctx.fillStyle = body;
+    ctx.fillRect(-w/2, -h/2, w, h);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(-w*.34, -h*.22, w*.68, h*.38);
+    ctx.fillStyle = '#dbeafe';
+    ctx.fillRect(-w*.28, -h*.16, w*.56, h*.15);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-w*.55, -h*.32, w*.12, h*.2);
+    ctx.fillRect(w*.43, -h*.32, w*.12, h*.2);
+    ctx.fillRect(-w*.55, h*.13, w*.12, h*.2);
+    ctx.fillRect(w*.43, h*.13, w*.12, h*.2);
+
+    if (police) {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(-w/2, -5, w, 13);
+      ctx.fillStyle = Math.sin(performance.now()/90) > 0 ? '#ef4444' : '#2563eb';
+      ctx.fillRect(-15, -8, 30, 8);
+    } else {
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(-w*.3, -h/2, w*.2, 7);
+      ctx.fillRect(w*.1, -h/2, w*.2, 7);
+    }
+    ctx.restore();
+  }
+
+  function buildRoadPath(offset) {
+    ctx.beginPath();
+    for (let y=-20; y<=canvas.height+20; y+=20) {
+      const x = roadCenterAt(y) + offset;
+      if (y === -20) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+  }
+
+  function drawRoad() {
+    ctx.fillStyle = '#18351f';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    ctx.beginPath();
+    for (let y=-20; y<=canvas.height+20; y+=20) {
+      const x = roadCenterAt(y) - roadWidth/2;
+      if (y === -20) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    for (let y=canvas.height+20; y>=-20; y-=20) {
+      ctx.lineTo(roadCenterAt(y)+roadWidth/2,y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#30343b';
+    ctx.fill();
+
+    ctx.strokeStyle = '#d6d3d1';
+    ctx.lineWidth = 7;
+    buildRoadPath(-roadWidth/2); ctx.stroke();
+    buildRoadPath(roadWidth/2); ctx.stroke();
+
+    ctx.strokeStyle = '#f8fafc';
+    ctx.lineWidth = 8;
+    ctx.setLineDash([58,52]);
+    ctx.lineDashOffset = -roadOffset;
+    buildRoadPath(0); ctx.stroke();
+    buildRoadPath(-roadWidth/4); ctx.stroke();
+    buildRoadPath(roadWidth/4); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawRamp(rampY) {
+    const centerX = roadCenterAt(rampY);
+    const nearY = rampY + 82;
+    const farY = rampY - 62;
+    const nearHalf = 165;
+    const farHalf = 105;
+
+    ctx.fillStyle = '#facc15';
+    ctx.beginPath();
+    ctx.moveTo(centerX-nearHalf, nearY);
+    ctx.lineTo(centerX+nearHalf, nearY);
+    ctx.lineTo(centerX+farHalf, farY);
+    ctx.lineTo(centerX-farHalf, farY);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 9;
+    for (let i=-2; i<=2; i++) {
+      const y = rampY + i*27;
+      const ratio = (nearY-y)/(nearY-farY);
+      const half = nearHalf-(nearHalf-farHalf)*ratio;
+      ctx.beginPath();
+      ctx.moveTo(centerX-half, y+12);
+      ctx.lineTo(centerX+half, y-12);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 38px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑', centerX, rampY+8);
+  }
+
+  function drawTrainCar(x, y, isFront) {
+    const w=220, h=96;
+    ctx.fillStyle='#8b1e2d';
+
+    if (isFront) {
+      ctx.beginPath();
+      ctx.moveTo(x-w/2+35,y-h/2);
+      ctx.lineTo(x+w/2,y-h/2);
+      ctx.lineTo(x+w/2,y+h/2);
+      ctx.lineTo(x-w/2+35,y+h/2);
+      ctx.lineTo(x-w/2,y+20);
+      ctx.lineTo(x-w/2,y-20);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(x-w/2,y-h/2,w,h);
+    }
+
+    ctx.fillStyle='#e5e7eb';
+    for (let wx=x-70; wx<=x+70; wx+=45) ctx.fillRect(wx,y-23,28,28);
+
+    ctx.fillStyle='#111827';
+    ctx.beginPath();
+    ctx.arc(x-65,y+48,15,0,Math.PI*2);
+    ctx.arc(x+65,y+48,15,0,Math.PI*2);
+    ctx.fill();
+
+    if (isFront) {
+      ctx.fillStyle='#fef08a';
+      ctx.fillRect(x-w/2+5,y-18,10,12);
+      ctx.fillRect(x-w/2+5,y+7,10,12);
+    }
+  }
+
+  function drawCrossing() {
+    if (!crossing) return;
+    const y = crossing.trackY;
+
+    ctx.fillStyle='#4b3621';
+    ctx.fillRect(0,y-46,canvas.width,12);
+    ctx.fillRect(0,y+34,canvas.width,12);
+
+    for (let x=0; x<canvas.width; x+=42) {
+      ctx.fillStyle='#7c5a35';
+      ctx.fillRect(x,y-55,24,110);
+    }
+
+    ctx.fillStyle='#d1d5db';
+    ctx.fillRect(0,y-34,canvas.width,7);
+    ctx.fillRect(0,y+27,canvas.width,7);
+
+    drawRamp(crossing.rampY);
+
+    if (crossing.active) {
+      const carWidth=230;
+      for (let i=0; i<5; i++) {
+        const x = crossing.trainX-crossing.trainLength/2+carWidth/2+i*carWidth;
+        drawTrainCar(x,y,i===0);
+      }
+    }
+  }
+
+  function draw() {
+    ctx.save();
+
+    if (shake > 1) {
+      ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+    }
+
+    drawRoad();
+    drawCrossing();
+    enemies.forEach(enemy => drawCar(enemy.x,enemy.y,enemy.w,enemy.h,'#111827',true));
+
+    const lift = player.jumpHeight;
+    const scale = 1 + Math.min(.32,lift/520);
+
+    if (player.airborne) {
+      ctx.fillStyle='rgba(0,0,0,.28)';
+      ctx.beginPath();
+      ctx.ellipse(player.x,player.y+42,35-Math.min(12,lift/30),13,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    if (player.hitCooldown <= 0 || Math.floor(player.hitCooldown*10)%2===0) {
+      drawCar(player.x,player.y-lift*.34,player.w,player.h,'#dc2626',false,scale);
+    }
+
+    if (player.airborne) {
+      ctx.fillStyle='white';
+      ctx.font='bold 18px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText('JUMP!',player.x,player.y-lift*.34-65);
+    }
+
+    ctx.restore();
+  }
+
+  function loop(now) {
+    if (!running) return;
+    const dt = Math.min(.033,(now-last)/1000);
+    last = now;
+    update(dt);
+    draw();
+    if (running) requestAnimationFrame(loop);
+  }
+
+  draw();
+})();
+</script>
+</body>
+</html>
